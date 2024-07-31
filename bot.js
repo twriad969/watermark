@@ -14,7 +14,7 @@ bot.on('photo', async (ctx) => {
     const file = await ctx.telegram.getFileLink(fileId);
     const mainImageUrl = file.href;
 
-    const watermarkUrl = 'https://i.ibb.co/n6tHyjw/20240627-001522.png';
+    const watermarkUrl = 'https://i.ibb.co/Sd0wFmP/20240731-193646.png';
     const params = new URLSearchParams({
       mainImageUrl,
       markImageUrl: watermarkUrl,

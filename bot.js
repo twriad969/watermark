@@ -18,8 +18,8 @@ bot.on('photo', async (ctx) => {
     const params = new URLSearchParams({
       mainImageUrl,
       markImageUrl: watermarkUrl,
-      markRatio: '0.5',
-      position: 'center'
+      markRatio: '0.4',
+      position: 'bottomLeft'
     });
 
     const response = await axios.get(`https://quickchart.io/watermark`, { params, responseType: 'arraybuffer' });

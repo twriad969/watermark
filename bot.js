@@ -64,7 +64,6 @@ bot.on('photo', async (ctx) => {
   await processPhoto(fileId, caption);
 });
 
-
 bot.command('mark', (ctx) => {
   const args = ctx.message.text.split(' ');
   if (args.length === 2 && !isNaN(args[1])) {
@@ -103,9 +102,16 @@ bot.command('add', (ctx) => {
 });
 
 bot.command('postnow', (ctx) => {
+  const args = ctx.message.text.split(' ');
+  let numImages = recentImages.length;
+
+  if (args.length === 2 && !isNaN(args[1])) {
+    numImages = Math.min(parseInt(args[1]), recentImages.length);
+  }
+
   if (recentImages.length > 0) {
     if (channels.length > 0) {
-      const channelButtons = channels.map(channel => Markup.button.callback(channel, `post_${channel}`));
+      const channelButtons = channels.map(channel => Markup.button.callback(channel, `post_${channel}_${numImages}`));
       ctx.reply('Select a channel to post the images:', Markup.inlineKeyboard(channelButtons, { columns: 1 }).resize());
     } else {
       ctx.reply('No channels added. Please add a channel using the /add command.');
@@ -119,19 +125,21 @@ bot.command('stats', (ctx) => {
   ctx.reply(`Total images processed: ${processedCount}`);
 });
 
-bot.action(/post_(.+)/, async (ctx) => {
+bot.action(/post_(.+)_(\d+)/, async (ctx) => {
   const channel = ctx.match[1];
-  for (const image of recentImages) {
+  const numImages = parseInt(ctx.match[2]);
+  for (let i = 0; i < numImages; i++) {
+    const image = recentImages[i];
     await ctx.telegram.sendPhoto(`@${channel}`, { source: image.image }, { caption: image.caption });
   }
-  recentImages = [];  // Clear recent images after posting
+  recentImages = recentImages.slice(numImages);  // Remove posted images
   ctx.reply(`Images have been posted to @${channel}.`);
 });
 
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Bot is running');
+  res.send('Borunning');
 });
 
 const PORT = process.env.PORT || 3000;

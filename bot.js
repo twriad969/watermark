@@ -25,38 +25,58 @@ const watermarkImage = async (mainImageUrl, watermarkUrl, ratio) => {
   return Buffer.from(response.data, 'binary');
 };
 
-bot.on('photo', async (ctx) => {
-  const processPhoto = async (fileId, caption, retry = 3) => {
-    try {
-      const file = await ctx.telegram.getFileLink(fileId);
-      const mainImageUrl = file.href;
-      const watermarkUrl = 'https://i.ibb.co/Sd0wFmP/20240731-193646.png';
-      const watermarkedImage = await watermarkImage(mainImageUrl, watermarkUrl, markRatio);
+const processPhoto = async (ctx, photo, caption, retry = 3) => {
+  try {
+    const file = await ctx.telegram.getFileLink(photo.file_id);
+    const mainImageUrl = file.href;
+    const watermarkUrl = 'https://i.ibb.co/Sd0wFmP/20240731-193646.png';
+    const watermarkedImage = await watermarkImage(mainImageUrl, watermarkUrl, markRatio);
 
-      // Customize the caption
-      const links = caption ? caption.match(/\bhttps?:\/\/\S+/gi) : [];
-      const customCaption = `${header ? header + '\n\n' : ''}` +
-        `${links ? links.map((link, index) => `👉 v${index + 1} : ${link}`).join('\n\n') : ''}` +
+    // Check if the caption contains links
+    const links = caption ? caption.match(/\bhttps?:\/\/\S+/gi) : null;
+    let customCaption = caption;
+
+    if (links) {
+      customCaption = `${header ? header + '\n\n' : ''}` +
+        `${links.map((link, index) => `👉 v${index + 1} : ${link}`).join('\n\n')}` +
         `${footer ? '\n\n' + footer : ''}`;
-
-      recentImages.push({ image: watermarkedImage, caption: customCaption });
-      processedCount++;
-
-      await ctx.replyWithPhoto({ source: watermarkedImage }, { caption: customCaption });
-    } catch (error) {
-      console.error(error);
-      if (retry > 0) {
-        console.log(`Retrying... attempts left: ${retry}`);
-        await processPhoto(fileId, caption, retry - 1);
-      } else {
-        ctx.reply('Failed to watermark the image.');
-      }
     }
-  };
 
-  const fileId = ctx.message.photo.pop().file_id;
-  const caption = ctx.message.caption;
-  await processPhoto(fileId, caption);
+    recentImages.push({ type: 'photo', media: { source: watermarkedImage }, caption: customCaption });
+    processedCount++;
+
+    return { type: 'photo', media: { source: watermarkedImage }, caption: customCaption };
+  } catch (error) {
+    console.error(error);
+    if (retry > 0) {
+      console.log(`Retrying... attempts left: ${retry}`);
+      return await processPhoto(ctx, photo, caption, retry - 1);
+    } else {
+      ctx.reply('Failed to watermark the image.');
+      return null;
+    }
+  }
+};
+
+bot.on('photo', async (ctx) => {
+  if (ctx.message.media_group_id) {
+    const mediaGroup = ctx.message.photo.map(photo => ({ file_id: photo.file_id }));
+    const caption = ctx.message.caption || '';
+
+    const processedPhotos = await Promise.all(mediaGroup.map(photo => processPhoto(ctx, photo, caption)));
+
+    if (processedPhotos.every(photo => photo !== null)) {
+      await ctx.replyWithMediaGroup(processedPhotos);
+    }
+  } else {
+    const photo = ctx.message.photo.pop();
+    const caption = ctx.message.caption || '';
+    const processedPhoto = await processPhoto(ctx, photo, caption);
+
+    if (processedPhoto) {
+      await ctx.replyWithPhoto(processedPhoto.media, { caption: processedPhoto.caption });
+    }
+  }
 });
 
 bot.command('mark', (ctx) => {
@@ -115,8 +135,12 @@ bot.command('stats', (ctx) => {
 
 bot.action(/post_(.+)/, async (ctx) => {
   const channel = ctx.match[1];
-  for (const image of recentImages) {
-    await ctx.telegram.sendPhoto(`@${channel}`, { source: image.image }, { caption: image.caption });
+  if (recentImages.length > 1) {
+    await ctx.telegram.sendMediaGroup(`@${channel}`, recentImages);
+  } else {
+    for (const image of recentImages) {
+      await ctx.telegram.sendPhoto(`@${channel}`, image.media, { caption: image.caption });
+    }
   }
   recentImages = [];  // Clear recent images after posting
   ctx.reply(`Images have been posted to @${channel}.`);

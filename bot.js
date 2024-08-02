@@ -25,79 +25,45 @@ const watermarkImage = async (mainImageUrl, watermarkUrl, ratio) => {
   return Buffer.from(response.data, 'binary');
 };
 
-const processPhoto = async (ctx, photo, caption, retry = 3) => {
-  try {
-    const file = await ctx.telegram.getFileLink(photo.file_id);
-    const mainImageUrl = file.href;
-    const watermarkUrl = 'https://i.ibb.co/Sd0wFmP/20240731-193646.png';
-    const watermarkedImage = await watermarkImage(mainImageUrl, watermarkUrl, markRatio);
-
-    // Check if the caption contains links
-    const links = caption ? caption.match(/\bhttps?:\/\/\S+/gi) : null;
-    let customCaption = caption;
-
-    if (links) {
-      customCaption = `${header ? header + '\n\n' : ''}` +
-        `${links.map((link, index) => `👉 v${index + 1} : ${link}`).join('\n\n')}` +
-        `${footer ? '\n\n' + footer : ''}`;
-    }
-
-    processedCount++;
-    return { type: 'photo', media: { source: watermarkedImage }, caption: customCaption };
-  } catch (error) {
-    console.error(error);
-    if (retry > 0) {
-      console.log(`Retrying... attempts left: ${retry}`);
-      return await processPhoto(ctx, photo, caption, retry - 1);
-    } else {
-      ctx.reply('Failed to watermark the image.');
-      return null;
-    }
-  }
-};
-
-const sendMediaGroupInBatches = async (ctx, mediaGroup, batchSize = 8) => {
-  for (let i = 0; i < mediaGroup.length; i += batchSize) {
-    const batch = mediaGroup.slice(i, i + batchSize);
-    try {
-      await ctx.replyWithMediaGroup(batch);
-    } catch (error) {
-      console.error('Error sending media group batch:', error);
-    }
-  }
-};
-
 bot.on('photo', async (ctx) => {
-  try {
-    if (ctx.message.media_group_id) {
-      const mediaGroup = ctx.message.media_group_id;
-      const photos = ctx.message.photo;
-      const caption = ctx.message.caption || '';
+  const processPhoto = async (fileId, caption, retry = 3) => {
+    try {
+      const file = await ctx.telegram.getFileLink(fileId);
+      const mainImageUrl = file.href;
+      const watermarkUrl = 'https://i.ibb.co/Sd0wFmP/20240731-193646.png';
+      const watermarkedImage = await watermarkImage(mainImageUrl, watermarkUrl, markRatio);
 
-      const processedPhotos = await Promise.all(photos.map(photo => processPhoto(ctx, photo, caption)));
+      let customCaption = caption || '';
 
-      const mediaGroupPhotos = processedPhotos.filter(photo => photo !== null).map(photo => ({
-        type: 'photo',
-        media: photo.media.source,
-        caption: photo.caption
-      }));
-
-      if (mediaGroupPhotos.length > 0) {
-        await sendMediaGroupInBatches(ctx, mediaGroupPhotos);
+      if (caption) {
+        const links = caption.match(/\bhttps?:\/\/\S+/gi);
+        if (links) {
+          customCaption = `${header ? header + '\n\n' : ''}` +
+            `${links.map((link, index) => `👉 v${index + 1} : ${link}`).join('\n\n')}` +
+            `${footer ? '\n\n' + footer : ''}`;
+        }
       }
-    } else {
-      const photo = ctx.message.photo.pop();
-      const caption = ctx.message.caption || '';
-      const processedPhoto = await processPhoto(ctx, photo, caption);
 
-      if (processedPhoto) {
-        await ctx.replyWithPhoto(processedPhoto.media, { caption: processedPhoto.caption });
+      recentImages.push({ image: watermarkedImage, caption: customCaption });
+      processedCount++;
+
+      await ctx.replyWithPhoto({ source: watermarkedImage }, { caption: customCaption });
+    } catch (error) {
+      console.error(error);
+      if (retry > 0) {
+        console.log(`Retrying... attempts left: ${retry}`);
+        await processPhoto(fileId, caption, retry - 1);
+      } else {
+        ctx.reply('Failed to watermark the image.');
       }
     }
-  } catch (error) {
-    console.error('Unhandled error while processing', error);
-  }
+  };
+
+  const fileId = ctx.message.photo.pop().file_id;
+  const caption = ctx.message.caption;
+  await processPhoto(fileId, caption);
 });
+
 
 bot.command('mark', (ctx) => {
   const args = ctx.message.text.split(' ');
@@ -155,7 +121,9 @@ bot.command('stats', (ctx) => {
 
 bot.action(/post_(.+)/, async (ctx) => {
   const channel = ctx.match[1];
-  await sendMediaGroupInBatches(ctx.telegram, recentImages, 8, `@${channel}`);
+  for (const image of recentImages) {
+    await ctx.telegram.sendPhoto(`@${channel}`, { source: image.image }, { caption: image.caption });
+  }
   recentImages = [];  // Clear recent images after posting
   ctx.reply(`Images have been posted to @${channel}.`);
 });
@@ -163,7 +131,7 @@ bot.action(/post_(.+)/, async (ctx) => {
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Bot isnning');
+  res.send('Bot is running');
 });
 
 const PORT = process.env.PORT || 3000;

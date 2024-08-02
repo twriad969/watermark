@@ -57,30 +57,34 @@ const processPhoto = async (ctx, photo, caption, retry = 3) => {
 };
 
 bot.on('photo', async (ctx) => {
-  if (ctx.message.media_group_id) {
-    const mediaGroup = ctx.message.media_group_id;
-    const photos = ctx.message.photo;
-    const caption = ctx.message.caption || '';
+  try {
+    if (ctx.message.media_group_id) {
+      const mediaGroup = ctx.message.media_group_id;
+      const photos = ctx.message.photo;
+      const caption = ctx.message.caption || '';
 
-    const processedPhotos = await Promise.all(photos.map(photo => processPhoto(ctx, photo, caption)));
+      const processedPhotos = await Promise.all(photos.map(photo => processPhoto(ctx, photo, caption)));
 
-    const mediaGroupPhotos = processedPhotos.map(photo => ({
-      type: 'photo',
-      media: photo.media.source,
-      caption: photo.caption
-    }));
+      const mediaGroupPhotos = processedPhotos.filter(photo => photo !== null).map(photo => ({
+        type: 'photo',
+        media: photo.media.source,
+        caption: photo.caption
+      }));
 
-    if (mediaGroupPhotos.length > 0) {
-      await ctx.replyWithMediaGroup(mediaGroupPhotos);
+      if (mediaGroupPhotos.length > 0) {
+        await ctx.replyWithMediaGroup(mediaGroupPhotos);
+      }
+    } else {
+      const photo = ctx.message.photo.pop();
+      const caption = ctx.message.caption || '';
+      const processedPhoto = await processPhoto(ctx, photo, caption);
+
+      if (processedPhoto) {
+        await ctx.replyWithPhoto(processedPhoto.media, { caption: processedPhoto.caption });
+      }
     }
-  } else {
-    const photo = ctx.message.photo.pop();
-    const caption = ctx.message.caption || '';
-    const processedPhoto = await processPhoto(ctx, photo, caption);
-
-    if (processedPhoto) {
-      await ctx.replyWithPhoto(processedPhoto.media, { caption: processedPhoto.caption });
-    }
+  } catch (error) {
+    console.error('Unhandled error while processing', error);
   }
 });
 
@@ -154,7 +158,7 @@ bot.action(/post_(.+)/, async (ctx) => {
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('telegram @fattasuck');
+  res.send('Bot is running');
 });
 
 const PORT = process.env.PORT || 3000;

@@ -42,9 +42,7 @@ const processPhoto = async (ctx, photo, caption, retry = 3) => {
         `${footer ? '\n\n' + footer : ''}`;
     }
 
-    recentImages.push({ type: 'photo', media: { source: watermarkedImage }, caption: customCaption });
     processedCount++;
-
     return { type: 'photo', media: { source: watermarkedImage }, caption: customCaption };
   } catch (error) {
     console.error(error);
@@ -60,13 +58,20 @@ const processPhoto = async (ctx, photo, caption, retry = 3) => {
 
 bot.on('photo', async (ctx) => {
   if (ctx.message.media_group_id) {
-    const mediaGroup = ctx.message.photo.map(photo => ({ file_id: photo.file_id }));
+    const mediaGroup = ctx.message.media_group_id;
+    const photos = ctx.message.photo;
     const caption = ctx.message.caption || '';
 
-    const processedPhotos = await Promise.all(mediaGroup.map(photo => processPhoto(ctx, photo, caption)));
+    const processedPhotos = await Promise.all(photos.map(photo => processPhoto(ctx, photo, caption)));
 
-    if (processedPhotos.every(photo => photo !== null)) {
-      await ctx.replyWithMediaGroup(processedPhotos);
+    const mediaGroupPhotos = processedPhotos.map(photo => ({
+      type: 'photo',
+      media: photo.media.source,
+      caption: photo.caption
+    }));
+
+    if (mediaGroupPhotos.length > 0) {
+      await ctx.replyWithMediaGroup(mediaGroupPhotos);
     }
   } else {
     const photo = ctx.message.photo.pop();
@@ -149,7 +154,7 @@ bot.action(/post_(.+)/, async (ctx) => {
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Bot is running');
+  res.send('telegram @fattasuck');
 });
 
 const PORT = process.env.PORT || 3000;

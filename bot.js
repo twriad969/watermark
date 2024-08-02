@@ -56,6 +56,17 @@ const processPhoto = async (ctx, photo, caption, retry = 3) => {
   }
 };
 
+const sendMediaGroupInBatches = async (ctx, mediaGroup, batchSize = 8) => {
+  for (let i = 0; i < mediaGroup.length; i += batchSize) {
+    const batch = mediaGroup.slice(i, i + batchSize);
+    try {
+      await ctx.replyWithMediaGroup(batch);
+    } catch (error) {
+      console.error('Error sending media group batch:', error);
+    }
+  }
+};
+
 bot.on('photo', async (ctx) => {
   try {
     if (ctx.message.media_group_id) {
@@ -72,7 +83,7 @@ bot.on('photo', async (ctx) => {
       }));
 
       if (mediaGroupPhotos.length > 0) {
-        await ctx.replyWithMediaGroup(mediaGroupPhotos);
+        await sendMediaGroupInBatches(ctx, mediaGroupPhotos);
       }
     } else {
       const photo = ctx.message.photo.pop();
@@ -144,13 +155,7 @@ bot.command('stats', (ctx) => {
 
 bot.action(/post_(.+)/, async (ctx) => {
   const channel = ctx.match[1];
-  if (recentImages.length > 1) {
-    await ctx.telegram.sendMediaGroup(`@${channel}`, recentImages);
-  } else {
-    for (const image of recentImages) {
-      await ctx.telegram.sendPhoto(`@${channel}`, image.media, { caption: image.caption });
-    }
-  }
+  await sendMediaGroupInBatches(ctx.telegram, recentImages, 8, `@${channel}`);
   recentImages = [];  // Clear recent images after posting
   ctx.reply(`Images have been posted to @${channel}.`);
 });
@@ -158,7 +163,7 @@ bot.action(/post_(.+)/, async (ctx) => {
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Bot is running');
+  res.send('Bot isnning');
 });
 
 const PORT = process.env.PORT || 3000;
